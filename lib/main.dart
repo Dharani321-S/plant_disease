@@ -10,6 +10,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Local files
+import 'prediction_service.dart';
 // make sure this file exists
 
 void main() {
@@ -86,8 +87,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
 /* ---------------- LOGIN PAGE ---------------- */
 
+
+
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key}); // ⭐ Add this
+  const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -96,7 +99,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final LocalAuthentication auth = LocalAuthentication();
   final TextEditingController pinController = TextEditingController();
-  String savedPin = "1234"; // default PIN
+  late String savedPin;
 
   @override
   void initState() {
@@ -105,11 +108,13 @@ class _LoginPageState extends State<LoginPage> {
     fingerprintAuth();
   }
 
+  // Load saved PIN from SharedPreferences
   Future<void> loadPin() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    savedPin = prefs.getString('user_pin') ?? "1234";
+    savedPin = prefs.getString('user_pin') ?? "1234"; // default PIN
   }
 
+  // Fingerprint authentication
   Future<void> fingerprintAuth() async {
     try {
       bool canCheck = await auth.canCheckBiometrics;
@@ -128,27 +133,27 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ("Fingerprint error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Biometric authentication failed")),
       );
     }
   }
 
+  // PIN verification
   void verifyPin() {
     if (pinController.text == savedPin) {
       goHome();
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Incorrect PIN")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Incorrect PIN")),
+      );
     }
   }
 
   void goHome() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => HomePage()),
+      MaterialPageRoute(builder: (_) => const ScanPage()),
     );
   }
 
@@ -161,7 +166,7 @@ class _LoginPageState extends State<LoginPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.fingerprint, size: 100, color: Colors.green),
+            const Icon(Icons.fingerprint, size: 100, color: Colors.green),
             const SizedBox(height: 20),
             const Text(
               "Unlock Plant Disease App",
@@ -220,77 +225,6 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/* ---------------- HOME PAGE + MENU ---------------- */
-
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black, // dark theme
-      appBar: AppBar(
-        title: const Text("Plant Disease Detector"),
-        backgroundColor: Colors.green, // green accent
-      ),
-      drawer: Drawer(
-        child: Container(
-          color: Colors.black, // match dark theme
-          child: ListView(
-            children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(color: Colors.green),
-                child: Text(
-                  "Menu",
-                  style: TextStyle(color: Colors.white, fontSize: 24),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.green),
-                title: const Text(
-                  "Scan Plant",
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => ScanPage()),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.green),
-                title: const Text(
-                  "Logout",
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  // Go back to login page
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginPage()),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      body: const Center(
-        child: Text(
-          "Welcome 🌿\nUse menu to scan plant",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.green, // green text accent
-            fontWeight: FontWeight.bold,
-          ),
         ),
       ),
     );
@@ -434,17 +368,33 @@ class ResultPage extends StatefulWidget {
 
 // FIX 1: Changed 'on State' to 'extends State'
 class _ResultPageState extends State<ResultPage> {
+  PredictionService predictionService = PredictionService();
   late final FlutterTts flutterTts;
+
+  final List<String> diseaseLabels = [
+    "tomato_early_blight",
+    "tomato_late_blight",
+    "potato_early_blight",
+    "potato_late_blight",
+    "healthy"
+  ];
+
+
 
   // FIX 2: Initialized with default values to prevent LateInitializationError
   String diseaseName = "கணக்கிடப்படுகிறது...";
   String treatmentText = "காத்திருக்கவும்...";
   bool isLoaded = false;
+  late String predicted;
 
   @override
   void initState() {
     super.initState();
     flutterTts = FlutterTts();
+    predictionService.loadModel().then((_) {
+    runPrediction();
+  });
+
     initTTS();
   }
 
@@ -453,58 +403,64 @@ class _ResultPageState extends State<ResultPage> {
     await flutterTts.setPitch(1.0);
     await flutterTts.setSpeechRate(0.45);
 
-    // Predict disease
-    String predicted = predictDisease(widget.image.path);
-
-    if (mounted) {
-      setState(() {
-        diseaseName = diseaseData[predicted]!["name"]!;
-        treatmentText = diseaseData[predicted]!["treatment"]!;
-        isLoaded = true;
-      });
-    }
-
     speakTamil();
   }
+  Future<void> runPrediction() async {
+  File imageFile = File(widget.image.path);
 
-  Future<void> speakTamil() async {
-    if (isLoaded) {
-      await flutterTts.speak(treatmentText);
-    }
+  int index = await predictionService.predict(imageFile);
+
+  debugPrint("Prediction index: $index");
+  
+  if (mounted) {
+    setState(() {
+      predicted = diseaseLabels[index];
+      diseaseName = diseaseData[predicted]!["name"]!;
+      treatmentText = diseaseData[predicted]!["treatment"]!;
+      isLoaded = true;
+    });
   }
+}
 
-  @override
-  void dispose() {
-    flutterTts.stop();
-    super.dispose();
+Future<void> speakTamil() async {
+  if (isLoaded) {
+    await flutterTts.speak("உங்கள் செடியில் $diseaseName நோய் உள்ளது. $treatmentText");
   }
+}
 
-  String predictDisease(String path) {
-    String lowerPath = path.toLowerCase();
-    if (lowerPath.contains("banana")) return "banana_leaf_spot";
-    if (lowerPath.contains("tomato")) return "tomato_leaf_blight";
-    return "unknown";
-  }
+@override
+void dispose() {
+  flutterTts.stop();
+  super.dispose();
+}
 
-  final Map<String, Map<String, String>> diseaseData = {
-    "banana_leaf_spot": {
-      "name": "Banana Leaf Spot",
-      "treatment":
-          "வாழை இலை புள்ளி நோய் உள்ளது. பாதிக்கப்பட்ட இலைகளை அகற்றவும். பூஞ்சைநாசினி மருந்தை வாரத்திற்கு ஒரு முறை தெளிக்கவும்.",
-    },
-    "tomato_leaf_blight": {
-      "name": "Tomato Leaf Blight",
-      "treatment":
-          "தக்காளி இலை கருகல் நோய் உள்ளது. Mancozeb போன்ற மருந்து பயன்படுத்தவும். அதிக நீர் பாய்ச்சுவதை தவிர்க்கவும்.",
-    },
-    "unknown": {
-      "name": "Unknown Disease",
-      "treatment":
-          "நோய் சரியாக கண்டறிய முடியவில்லை. அருகிலுள்ள வேளாண்மை அலுவலகத்தை அணுகவும்.",
-    },
-  };
-
-  @override
+final Map<String, Map<String, String>> diseaseData = {
+  "tomato_early_blight": {
+    "name": "Tomato Early Blight",
+    "treatment":
+        "தக்காளி ஆரம்ப கரும்புள்ளி. Mancozeb அல்லது Chlorothalonil பூஞ்சைநாசினி தெளிக்கவும்."
+  },
+  "tomato_late_blight": {
+    "name": "Tomato Late Blight",
+    "treatment":
+        "தக்காளி Late Blight. பாதிக்கப்பட்ட இலைகளை அகற்றி Metalaxyl தெளிக்கவும்."
+  },
+  "potato_early_blight": {
+    "name": "Potato Early Blight",
+    "treatment":
+        "உருளைக்கிழங்கு Early Blight. Mancozeb அல்லது Copper fungicide தெளிக்கவும்."
+  },
+  "potato_late_blight": {
+    "name": "Potato Late Blight",
+    "treatment":
+        "உருளைக்கிழங்கு Late Blight. Metalaxyl அல்லது Ridomil பயன்படுத்தவும்."
+  },
+  "healthy": {
+    "name": "Healthy Leaf",
+    "treatment":
+        "இலை ஆரோக்கியமாக உள்ளது. வழக்கமான நீர்ப்பாசனம் மற்றும் உரம் பயன்படுத்தவும்."
+  },
+};  @override
   Widget build(BuildContext context) {
     double confidenceValue = 70;
     Color severityColor = getSeverityColor(confidenceValue);
