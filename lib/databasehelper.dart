@@ -20,8 +20,9 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2, 
+      version: 3, 
       onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -32,7 +33,8 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         imagePath TEXT,
         diseaseName TEXT,
-        treatment TEXT
+        treatment TEXT,
+        date TEXT
       )
     ''');
     await db.execute('''
@@ -45,13 +47,21 @@ class DatabaseHelper {
     ''');
   }
 
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE history ADD COLUMN date TEXT');
+    }
+  }
+
   // --- History Methods ---
   Future<int> insertHistory(String imagePath, String diseaseName, String treatment) async {
     final db = await instance.database;
+    String date = DateTime.now().toString().split(' ')[0]; // YYYY-MM-DD
     return await db.insert('history', {
       'imagePath': imagePath,
       'diseaseName': diseaseName,
       'treatment': treatment,
+      'date': date,
     });
   }
 

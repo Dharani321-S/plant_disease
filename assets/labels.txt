@@ -3,4 +3,4 @@ Potato___Late_blight
 Potato___healthy
 Tomato_Early_blight
 Tomato_Late_blight
-Tomato_healthy
+Tomato___healthy

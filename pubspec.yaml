@@ -17,13 +17,16 @@ dependencies:
   local_auth: ^3.0.1
   shared_preferences: ^2.2.2
   meta: ^1.17.0
+  google_fonts: ^6.2.1
   tflite_flutter: ^0.12.1
   image: ^4.0.17
   cupertino_icons: ^1.0.8
   local_auth_ios: ^1.1.7
   local_auth_android: ^2.0.5
   
-  image_cropper: ^5.0.0 # Pudhu version
+  image_cropper: ^7.1.0 # Pudhu version
+  camera: ^0.12.0+1
+  
 
 dev_dependencies:
   flutter_test:
@@ -36,10 +39,9 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/icon leaf.jpeg" # Unga sariyaana file name
   adaptive_icon_background: "#ffffff"
-
 flutter:
   uses-material-design: true
   assets:
     - assets/plant_disease_model.tflite
     - assets/labels.txt
-    - "assets/icon leaf.jpeg" # Quotes-la kudutha dhaan space correct-ah work aagum
+    - "assets/icon leaf.jpeg"
